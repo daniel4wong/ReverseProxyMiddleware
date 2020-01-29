@@ -14,18 +14,21 @@ namespace ReverseProxyMiddleware
     {
         private readonly AppFunc _next;
         private readonly HttpClient _httpClient;
+        private readonly CookieContainer _cookieContainer;
         private readonly ProxyOptions _options;
 
         public ProxyMiddleware(AppFunc next, ProxyOptions options)
         {
             _next = next;
             _options = options;
+            _cookieContainer = new CookieContainer();
             _httpClient = new HttpClient(_options.BackChannelMessageHandler ?? new HttpClientHandler
             {
                 AllowAutoRedirect = _options.FollowRedirects,
                 UseProxy = options.UseExternalProxy,
                 Proxy = options.ExternalProxy,
                 PreAuthenticate = options.ExternalProxyPreAuthenticate,
+                CookieContainer = _cookieContainer,
             });
         }
 
@@ -141,6 +144,11 @@ namespace ReverseProxyMiddleware
             foreach (var header in context.Request.Headers)
                 if (!requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray()))
                     requestMessage.Content?.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
+
+            var baseAddress = new Uri(requestMessage.RequestUri.GetLeftPart(UriPartial.Authority));
+
+            foreach (var cookie in context.Request.Cookies)
+                _cookieContainer.Add(baseAddress, new Cookie(cookie.Key, cookie.Value));
         }
 
         private bool UserIsAuthenticated(IOwinContext context)
